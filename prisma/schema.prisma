@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum NoteStatus {
+  uploaded
+  transcribing
+  transcribed
+  generating_prompt
+  prompt_generated
+  running_claude
+  claude_completed
+  error
+}
+
+model AudioNote {
+  id               String          @id @default(uuid())
+  title            String          @default("Untitled Note")
+  originalFileName String?
+  audioPath        String
+  mimeType         String
+  durationSeconds  Float?
+  status           NoteStatus      @default(uploaded)
+  errorMessage     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  transcript       Transcript?
+  promptArtifact   PromptArtifact?
+  claudeRuns       ClaudeRun[]
+
+  @@map("audio_notes")
+}
+
+model Transcript {
+  id                    String    @id @default(uuid())
+  audioNoteId           String    @unique
+  rawText               String
+  cleanedText           String?
+  transcriptionProvider String    @default("openai-whisper")
+  language              String?
+  createdAt             DateTime  @default(now())
+
+  audioNote             AudioNote @relation(fields: [audioNoteId], references: [id], onDelete: Cascade)
+
+  @@map("transcripts")
+}
+
+model PromptArtifact {
+  id                        String      @id @default(uuid())
+  audioNoteId               String      @unique
+  engineeringSummary        String?
+  detectedIntent            String?
+  techStack                 Json?
+  functionalRequirements    Json?
+  nonFunctionalRequirements Json?
+  assumptions               Json?
+  risks                     Json?
+  acceptanceCriteria        Json?
+  finalClaudePrompt         String
+  openaiModel               String      @default("gpt-4o")
+  createdAt                 DateTime    @default(now())
+
+  audioNote                 AudioNote   @relation(fields: [audioNoteId], references: [id], onDelete: Cascade)
+  claudeRuns                ClaudeRun[]
+
+  @@map("prompt_artifacts")
+}
+
+model ClaudeRun {
+  id               String    @id @default(uuid())
+  audioNoteId      String
+  promptArtifactId String
+  requestPrompt    String
+  responseText     String?
+  anthropicModel   String    @default("claude-sonnet-4-20250514")
+  status           String    @default("pending")
+  errorMessage     String?
+  createdAt        DateTime  @default(now())
+
+  audioNote        AudioNote      @relation(fields: [audioNoteId], references: [id], onDelete: Cascade)
+  promptArtifact   PromptArtifact @relation(fields: [promptArtifactId], references: [id], onDelete: Cascade)
+
+  @@map("claude_runs")
+}
