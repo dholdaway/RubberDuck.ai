@@ -7,13 +7,14 @@ Turn spoken development ideas into structured technical specifications and imple
 1. **Record or upload** an audio note describing what you want to build
 2. **Transcribe** the audio using OpenAI Whisper
 3. **Generate** a structured technical spec and Claude-ready prompt via GPT-4o
-4. **Optionally run** the generated prompt through Claude to produce code
+4. **Edit** the generated prompt if needed
+5. **Optionally run** the generated prompt through Claude to produce code
 
 ## Tech Stack
 
 - **Next.js 14** (App Router) — full-stack TypeScript
 - **Prisma** — type-safe ORM
-- **PostgreSQL** — persistence
+- **PostgreSQL** — persistence (via Docker)
 - **Tailwind CSS** — styling
 - **OpenAI API** — Whisper transcription + GPT-4o prompt generation
 - **Anthropic Claude API** — optional code generation
@@ -21,22 +22,32 @@ Turn spoken development ideas into structured technical specifications and imple
 ## Prerequisites
 
 - Node.js 18+
-- Docker (for PostgreSQL) or an existing PostgreSQL instance
+- Docker (for PostgreSQL)
 - OpenAI API key
-- Anthropic API key (optional, for Claude execution step)
+- Anthropic API key (optional, for the Claude execution step)
 
 ## Setup
 
 ```bash
-# 1. Start PostgreSQL
-docker compose up -d
-
-# 2. Install dependencies
+# 1. Install dependencies
 npm install
 
-# 3. Copy environment variables
+# 2. Create your environment file
 cp .env.example .env
-# Edit .env with your API keys (DATABASE_URL is pre-configured for docker compose)
+```
+
+Open `.env` and add your API keys:
+
+```
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."     # optional
+```
+
+The `DATABASE_URL` is pre-configured to match the Docker Compose setup — no changes needed.
+
+```bash
+# 3. Start PostgreSQL
+docker compose up -d
 
 # 4. Create database tables
 npx prisma db push
@@ -54,9 +65,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (pre-configured for Docker) |
 | `OPENAI_API_KEY` | Yes | OpenAI API key (Whisper + GPT-4o) |
-| `ANTHROPIC_API_KEY` | No | Anthropic API key (Claude code gen) |
+| `ANTHROPIC_API_KEY` | No | Anthropic API key (Claude code generation) |
 | `STORAGE_PROVIDER` | No | `local` (default) or `s3` |
 | `STORAGE_LOCAL_PATH` | No | Local upload directory (default: `./uploads`) |
 
@@ -78,6 +89,7 @@ src/
   types/                  # TypeScript interfaces
 prisma/
   schema.prisma           # Database schema
+  seed.ts                 # Demo seed data
 ```
 
 ## API Endpoints
@@ -87,18 +99,34 @@ prisma/
 | `GET` | `/api/audio-notes` | List all notes |
 | `POST` | `/api/audio-notes` | Upload audio file |
 | `GET` | `/api/audio-notes/:id` | Get note detail |
+| `PATCH` | `/api/audio-notes/:id` | Update Claude prompt text |
 | `DELETE` | `/api/audio-notes/:id` | Delete note |
 | `POST` | `/api/audio-notes/:id/transcribe` | Transcribe audio |
 | `POST` | `/api/audio-notes/:id/generate-prompt` | Generate spec + prompt |
 | `POST` | `/api/audio-notes/:id/run-claude` | Execute prompt in Claude |
 
-## Pipeline Status Flow
+## Pipeline
+
+Each note progresses through a visual pipeline:
 
 ```
 uploaded -> transcribing -> transcribed -> generating_prompt -> prompt_generated -> running_claude -> claude_completed
                  |                              |                                        |
-                 +------------------------------+----------------------------------------+-> error
+                 +------------------------------+----------------------------------------+-> error (with retry)
 ```
+
+## Features
+
+- Browser microphone recording
+- Audio file upload (webm, mp3, wav, m4a, ogg, mp4)
+- Audio playback on note detail page
+- Editable Claude prompt before execution
+- Copy-to-clipboard for prompts and outputs
+- JSON and Markdown export of specs
+- Retry buttons on failed pipeline steps
+- Re-run any pipeline step (re-transcribe, regenerate prompt)
+- Searchable history with status filters
+- Visual pipeline progress tracker
 
 ## Database Schema
 
@@ -110,4 +138,4 @@ Four core tables:
 
 ## Storage
 
-Audio files are stored locally in `./uploads/` by default. The storage layer uses a provider interface that can be swapped to S3-compatible storage by implementing `StorageProvider` in `src/lib/storage.ts`.
+Audio files are stored locally in `./uploads/` by default. The storage layer uses a provider interface (`StorageProvider` in `src/lib/storage.ts`) designed to be swapped to S3-compatible storage.
