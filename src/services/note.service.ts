@@ -235,13 +235,31 @@ export class NoteService {
     return (await this.getNote(id))!;
   }
 
-  async runClaude(id: string): Promise<AudioNoteDetail> {
+  async updatePrompt(id: string, prompt: string): Promise<AudioNoteDetail> {
+    const note = await prisma.audioNote.findUnique({
+      where: { id },
+      include: { promptArtifact: true },
+    });
+    if (!note) throw new Error("Note not found");
+    if (!note.promptArtifact) throw new Error("No prompt artifact found");
+
+    await prisma.promptArtifact.update({
+      where: { id: note.promptArtifact.id },
+      data: { finalClaudePrompt: prompt },
+    });
+
+    return (await this.getNote(id))!;
+  }
+
+  async runClaude(id: string, customPrompt?: string): Promise<AudioNoteDetail> {
     const note = await prisma.audioNote.findUnique({
       where: { id },
       include: { promptArtifact: true },
     });
     if (!note) throw new Error("Note not found");
     if (!note.promptArtifact) throw new Error("No prompt artifact — generate prompt first");
+
+    const promptText = customPrompt || note.promptArtifact.finalClaudePrompt;
 
     await prisma.audioNote.update({
       where: { id },
@@ -252,14 +270,14 @@ export class NoteService {
       data: {
         audioNoteId: id,
         promptArtifactId: note.promptArtifact.id,
-        requestPrompt: note.promptArtifact.finalClaudePrompt,
+        requestPrompt: promptText,
         anthropicModel: claudeService.getModel(),
         status: "running",
       },
     });
 
     try {
-      const result = await claudeService.execute(note.promptArtifact.finalClaudePrompt);
+      const result = await claudeService.execute(promptText);
 
       await prisma.claudeRun.update({
         where: { id: run.id },
